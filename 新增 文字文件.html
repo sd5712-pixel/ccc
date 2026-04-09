@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alien Runner: Final Edition</title>
+    <style>
+        * { touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { margin: 0; overflow: hidden; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; }
+        
+        #gameContainer { 
+            position: relative; width: 450px; height: 600px; 
+            border: 4px solid #1a1a2e; border-radius: 20px; 
+            box-shadow: 0 0 50px rgba(0, 242, 255, 0.4); 
+            overflow: hidden; background: #010105;
+        }
+
+        @media (max-width: 500px), (max-height: 650px) { #gameContainer { transform: scale(0.8); } }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; text-align: center; z-index: 100; box-sizing: border-box; padding: 20px; }
+        .bg-dark { background: rgba(5, 5, 20, 0.96); }
+
+        #storyScreen { background: #000; z-index: 400; }
+        .story-img { width: 100%; height: 250px; object-fit: cover; border-radius: 10px; border: 2px solid #00f2ff; margin-bottom: 15px; }
+        .story-text { font-size: 15px; line-height: 1.5; color: #fff; margin-bottom: 20px; height: 60px; }
+        
+        #permanentInfo {
+            position: absolute; bottom: 20px; left: 20px;
+            background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(0, 242, 255, 0.3);
+            padding: 8px 12px; border-radius: 8px; font-size: 11px; color: #aaa; z-index: 500; text-align: left; pointer-events: none;
+        }
+        .info-key { color: #00f2ff; font-weight: bold; }
+
+        #shopOverlay { display: none; background: rgba(0,0,0,0.95); z-index: 600; }
+        .item-card { width: 90px; background: #1a1a2e; border: 2px solid #333; padding: 10px; border-radius: 12px; cursor: pointer; font-size: 11px; margin: 5px; }
+        .price { color: #ffcc00; display: block; }
+
+        .btn-neon { padding: 10px 30px; background: linear-gradient(45deg, #ff0055, #ffcc00); border: none; border-radius: 50px; cursor: pointer; font-weight: bold; font-size: 16px; color: white; }
+        
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; color: #00f2ff; z-index: 50; }
+        #hud { position: absolute; top: 80px; left: 20px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px; }
+
+        .mobile-btns { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 150; }
+        .m-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.1); border: 1px solid #00f2ff; border-radius: 50%; color: #00f2ff; display: flex; justify-content: center; align-items: center; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <div id="permanentInfo">
+        <div style="color:#00f2ff; font-weight:bold; margin-bottom:3px; font-size:12px;">【操作指令】</div>
+        A / D : 左右移動<br>
+        W : 跳躍 | S : 滑行<br>
+        <span class="info-key">Q</span> : 道具 | <span class="info-key">Z</span> : 商店(失敗時)
+    </div>
+
+    <div id="storyScreen" class="overlay">
+        <img id="currentStoryImg" class="story-img" src="" alt="Story">
+        <div id="currentStoryText" class="story-text"></div>
+        <button class="btn-neon" id="storyBtn" onclick="nextStory()">下一幕 (啟動音效)</button>
+    </div>
+
+    <div id="lobbyScreen" class="overlay bg-dark" style="display:none;">
+        <h2 style="color:#00f2ff;">戰前準備</h2>
+        <p style="color:#ffcc00;">💰 金幣: $<span id="lobbyCoins">0</span></p>
+        <div id="lobbyInv" style="font-size:12px; margin-bottom:15px; color:#888;"></div>
+        <div style="display:flex; justify-content:center; flex-wrap:wrap;">
+            <div class="item-card" onclick="selectItem('shield')">🛡️ 防護罩</div>
+            <div class="item-card" onclick="selectItem('double')">💎 炭吉素</div>
+            <div class="item-card" onclick="selectItem('super')">🔥 超越者</div>
+        </div>
+        <button class="btn-neon" style="margin-top:20px;" onclick="startGame()">發起進攻</button>
+    </div>
+
+    <div id="shopOverlay" class="overlay">
+        <h2 style="color:#ffcc00;">宇宙補給站</h2>
+        <p>餘額: $<span id="shopCoins">0</span></p>
+        <div style="display:flex; flex-wrap:wrap; justify-content:center;">
+            <div class="item-card" onclick="buy('shield')">🛡️ 防護罩<span class="price">$50</span></div>
+            <div class="item-card" onclick="buy('double')">💎 炭吉素<span class="price">$100</span></div>
+            <div class="item-card" onclick="buy('super')">🔥 超越者<span class="price">$150</span></div>
+        </div>
+        <button class="btn-neon" style="background:#444; margin-top:20px;" onclick="closeShop()">離開</button>
+    </div>
+
+    <div id="ui">
+        <div style="font-size:24px; font-weight:bold;">SCORE: <span id="scoreText">0</span></div>
+        <div style="color:#ffcc00;">GOLD: $<span id="coinText">0</span></div>
+    </div>
+
+    <div id="hud">
+        <div id="hud-item">裝備：無</div>
+        <div id="hud-timer" style="color:#00f2ff; height:14px; font-weight:bold;"></div>
+    </div>
+
+    <div class="mobile-btns">
+        <div class="m-btn" id="btnQ">Q</div>
+        <div class="m-btn" id="btnZ" style="opacity:0.2;">Z</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+    // --- 音效系統 ---
+    let audioCtx, bgmBuffer, bgmNode;
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const sampleRate = audioCtx.sampleRate;
+            const length = sampleRate * 2;
+            bgmBuffer = audioCtx.createBuffer(1, length, sampleRate);
+            const data = bgmBuffer.getChannelData(0);
+            for (let i = 0; i < length; i++) data[i] = Math.sin(i * 0.005) * 0.02 + Math.random() * 0.005;
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    function playSound(freq, type, duration, vol=0.1) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+        osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        if (type === 'sawtooth') osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + duration);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+    function startBGM() {
+        if (!audioCtx || bgmNode) return;
+        bgmNode = audioCtx.createBufferSource(); bgmNode.buffer = bgmBuffer; bgmNode.loop = true;
+        const gain = audioCtx.createGain(); gain.gain.value = 0.2;
+        bgmNode.connect(gain); gain.connect(audioCtx.destination);
+        bgmNode.start();
+    }
+
+    // --- 遊戲邏輯與照片路徑 ---
+    const stories = [
+        { img: "https://r.jina.ai/i/9e00663673e44503932e67ef1104d496", text: "第一幕：外星人盯上了地球，想佔領這裡的所有資源。" },
+        { img: "https://r.jina.ai/i/52c67f08b3ba41c38e9c1935c754d924", text: "第二幕：鄰星哥布琳也不甘示弱，雙方在宇宙邊緣展開主權爭奪。" },
+        { img: "https://r.jina.ai/i/6c857794354041b693e253e680a370e7", text: "第三幕：地球防衛軍接獲入侵警報，派出最強太空人升空調查。" },
+        { img: "https://r.jina.ai/i/e1823901b0214eb798363768d73b22c7", text: "第四幕：你加速前往地球，迎面而來的是好戰的哥布琳大軍。" },
+        { img: "https://r.jina.ai/i/e222e967a1474929831f2bc2925b68df", text: "最後考驗：還有死守防線的太空人。衝過去，地球就在眼前！" }
+    ];
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 450; canvas.height = 600;
+
+    let currentStoryIdx = 0, gold = parseInt(localStorage.getItem('astro_gold')) || 0;
+    let inv = JSON.parse(localStorage.getItem('astro_inv')) || { shield: 0, double: 0, super: 0 };
+    let score, speed, obstacles, frame, gameState = 'STORY', playerColor;
+    let currentItem = 'none', useCount = 0, buff = { type: '', timer: 0 };
+    const player = { x: 225, lane: 1, jumping: false, v: 0, y: 0, sliding: 0, gravity: 1.15 };
+
+    function updateStory() {
+        document.getElementById('currentStoryImg').src = stories[currentStoryIdx].img;
+        document.getElementById('currentStoryText').innerText = stories[currentStoryIdx].text;
+    }
+    updateStory();
+
+    function nextStory() {
+        initAudio();
+        if (currentStoryIdx < stories.length - 1) { currentStoryIdx++; updateStory(); playSound(600, 'sine', 0.1); } 
+        else { toLobby(); }
+    }
+
+    function handleAction(cmd) {
+        if (gameState === 'OVER' && cmd === 'z') { openShop(); return; }
+        if (gameState === 'OVER' && cmd !== 'z') { toLobby(); return; }
+        if (cmd === 'q') useItem();
+        if (gameState !== 'PLAYING') return;
+        if (cmd === 'a' || cmd === 'left') { if(player.lane > 0) player.lane--; }
+        if (cmd === 'd' || cmd === 'right') { if(player.lane < 2) player.lane++; }
+        if (cmd === 'w' || cmd === 'up') { 
+            if(!player.jumping) { player.v = 18; player.jumping = true; player.sliding = 0; playSound(500, 'sine', 0.2); }
+        }
+        if (cmd === 's' || cmd === 'down') { 
+            if(player.jumping) player.v = -16; 
+            else { player.sliding = 28; playSound(200, 'sawtooth', 0.3); }
+        }
+    }
+
+    window.addEventListener('keydown', e => handleAction(e.key.toLowerCase()));
+    let tX, tY;
+    canvas.addEventListener('touchstart', e => { tX = e.touches[0].clientX; tY = e.touches[0].clientY; if (gameState !== 'PLAYING') handleAction('click'); });
+    canvas.addEventListener('touchend', e => {
+        let dX = e.changedTouches[0].clientX - tX, dY = e.changedTouches[0].clientY - tY;
+        if (Math.abs(dX) > Math.abs(dY)) { if(dX > 30) handleAction('right'); else if(dX < -30) handleAction('left'); }
+        else { if(dY > 30) handleAction('down'); else if(dY < -30) handleAction('up'); }
+    });
+    document.getElementById('btnQ').addEventListener('touchstart', e => { e.stopPropagation(); handleAction('q'); });
+    document.getElementById('btnZ').addEventListener('touchstart', e => { e.stopPropagation(); handleAction('z'); });
+
+    function toLobby() { 
+        gameState = 'LOBBY'; document.getElementById('storyScreen').style.display='none'; 
+        document.getElementById('lobbyScreen').style.display='flex'; syncUI(); 
+    }
+    function openShop() { document.getElementById('shopOverlay').style.display = 'flex'; syncUI(); }
+    function closeShop() { document.getElementById('shopOverlay').style.display = 'none'; }
+    function startGame() { 
+        initAudio(); startBGM();
+        gameState = 'PLAYING'; document.getElementById('lobbyScreen').style.display='none'; 
+        score=0; speed=0.018; obstacles=[]; player.lane=1; frame=0; useCount=0; 
+        playerColor = `hsl(${Math.random() * 360}, 80%, 65%)`; requestAnimationFrame(loop); 
+    }
+
+    function buy(t) { if(gold>=50){ gold-=50; inv[t]++; playSound(1000, 'sine', 0.1); save(); syncUI(); } }
+    function useItem() { if(currentItem!=='none' && useCount<3 && inv[currentItem]>0){ inv[currentItem]--; useCount++; buff.type=currentItem; buff.timer=600; playSound(700, 'triangle', 0.4); save(); syncUI(); } }
+    function save() { localStorage.setItem('astro_gold', gold); localStorage.setItem('astro_inv', JSON.stringify(inv)); }
+    function syncUI() { 
+        document.getElementById('coinText').innerText=gold; document.getElementById('lobbyCoins').innerText=gold; document.getElementById('shopCoins').innerText=gold;
+        document.getElementById('lobbyInv').innerText=`持有：🛡️x${inv.shield} 💎x${inv.double} 🔥x${inv.super}`;
+    }
+    function selectItem(t) { currentItem=t; document.getElementById('hud-item').innerText="裝備："+t; }
+
+    function drawPlayer() {
+        let tx = [100, 225, 350][player.lane]; player.x += (tx - player.x) * 0.28;
+        ctx.save(); ctx.translate(player.x, 540 - player.y);
+        ctx.fillStyle = playerColor; 
+        if (player.sliding > 0) {
+            ctx.beginPath(); ctx.ellipse(0, -10, 35, 12, 0, 0, 7); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(15, -12, 3, 0, 7); ctx.arc(10, -12, 3, 0, 7); ctx.fill();
+        } else {
+            ctx.fillStyle = '#444'; ctx.fillRect(-16, -35, 32, 20); ctx.fillStyle = playerColor;
+            ctx.fillRect(-12, -40, 24, 32); ctx.fillRect(-18, -35, 6, 18); ctx.fillRect(12, -35, 6, 18);
+            ctx.fillRect(-10, -8, 8, 12); ctx.fillRect(2, -8, 8, 12);
+            ctx.beginPath(); ctx.ellipse(0, -58, 20, 24, 0, 0, 7); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(-9, -60, 6, 10, 0, 0, 7); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(9, -60, 6, 10, 0, 0, 7); ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawGoblin() {
+        ctx.fillStyle = '#4e9a06'; ctx.beginPath(); ctx.arc(0,-35,16,0,7); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(-6,-38,4,0,7); ctx.arc(6,-38,4,0,7); ctx.fill();
+        ctx.fillStyle='#4e9a06'; ctx.fillRect(-13,-20,26,22);
+    }
+
+    function drawAstro() {
+        ctx.fillStyle='#ddd'; ctx.fillRect(-15,-45,30,40); ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,-60,18,0,7); ctx.fill();
+        ctx.fillStyle='#111'; ctx.beginPath(); ctx.ellipse(0,-62,13,8,0,0,7); ctx.fill();
+    }
+
+    function loop() {
+        if (gameState === 'OVER') {
+            ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0,0,450,600);
+            ctx.fillStyle = '#ff5555'; ctx.textAlign='center'; ctx.font='bold 40px Arial'; ctx.fillText('侵略失敗', 225, 250);
+            ctx.fillStyle = '#00f2ff'; ctx.font='18px Arial'; ctx.fillText('按 [Z] 進入補給站', 225, 290);
+            document.getElementById('btnZ').style.opacity = '1'; return;
+        }
+        ctx.fillStyle = '#010105'; ctx.fillRect(0,0,450,600);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        for(let i=0; i<5; i++){ ctx.beginPath(); ctx.moveTo(225+(i-2)*20, 240); ctx.lineTo(225+(i-2)*160, 600); ctx.stroke(); }
+        frame++; speed += 0.000008;
+        if(buff.timer > 0) buff.timer--;
+        if (player.jumping) { player.y += player.v; player.v -= player.gravity; if(player.y <= 0){ player.y=0; player.jumping=false; } }
+        if (player.sliding > 0) player.sliding--;
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            let o = obstacles[i]; o.z += speed;
+            let sY = 240 + (o.z * 360), scale = 0.1 + o.z * 1.6, lX = [85, 225, 365][o.lane], sX = 225 + (lX - 225) * scale;
+            ctx.save(); ctx.translate(sX, sY); ctx.scale(scale, scale);
+            if(o.type==='GOBLIN') drawGoblin(); else if(o.type==='ASTRONAUT') drawAstro();
+            else { ctx.fillStyle='#555'; ctx.beginPath(); ctx.arc(0,-15,20,0,7); ctx.fill(); }
+            ctx.restore();
+            if (o.z > 0.84 && o.z < 0.96 && o.lane === player.lane) {
+                let hit = (o.type==='GOBLIN' && player.y<35) || (o.type==='ASTRONAUT' && player.sliding<=0) || (o.type==='ROCK');
+                if (hit && buff.timer <= 0) { gameState = 'OVER'; playSound(100, 'square', 0.8, 0.2); save(); } 
+                else if (hit) { obstacles.splice(i, 1); playSound(900, 'sine', 0.1); }
+            }
+            if (o.z > 1.1) { obstacles.splice(i, 1); score += (buff.type==='double'?20:10); gold += 5; syncUI(); }
+        }
+        if (frame % 65 === 0) obstacles.push({ lane: Math.floor(Math.random()*3), z: 0, type: Math.random()<0.4?'GOBLIN':(Math.random()<0.7?'ASTRONAUT':'ROCK') });
+        document.getElementById('scoreText').innerText = Math.floor(score);
+        drawPlayer(); requestAnimationFrame(loop);
+    }
+</script>
+</body>
+</html>
